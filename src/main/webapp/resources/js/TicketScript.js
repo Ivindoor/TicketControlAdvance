@@ -188,7 +188,8 @@ $("#btnSaveTicket")
 																sweetAlertError(vMsg);
 															}
 														});
-											} else if (project.includes("CREE")) {
+											} else if (project.includes("CREE") || project.includes("VIKING") || project.includes("AMETEK") || project.includes("TESLA")) {
+												//Impresion de ticket en PDF para Tesla
 												$
 														.ajax({
 															url : 'buildPDFCEE',
@@ -515,7 +516,8 @@ $("#btnReprintTicket")
 												+ vMsg + " !!!");
 									}
 								});
-					} else if (project.includes("CREE")) {
+					} else if (project.includes("CREE") || project.includes("VIKING") || project.includes("AMETEK") || project.includes("TESLA")) {
+						//Impresion de ticket en PDF para Tesla
 						$.ajax({
 							url : 'buildPDFCEE',
 							type : 'POST',
@@ -627,8 +629,7 @@ $("#btnSaveProject").click(
 				// $('#divInstruction').show();
 				// $('#dataShippingInstruction').show();
 				$("#divPartNumber").show();
-				$("#divPartNumber").prop('disabled', false);
-				$("#divPartNumber").focus();
+				
 				$('#divPO').hide();
 				$("#txtPo").prop('disabled', true);
 				// } else if(project.includes("SIEMENS")){
@@ -858,6 +859,7 @@ $("#txtContainer")
 										.ajax({
 											type : 'POST',
 											url : 'validateSerialMCE',
+											//url : 'validateSerial',
 											data : {
 												container : container,
 												ticket : ticket,
@@ -1867,6 +1869,9 @@ $("#btnNewTicket").click(function() {
 	$("#btnOpen").prop('disabled', true);
 	var project = $("#selectProject option:selected").text();
 	$("#btnSelectProject").prop("disabled", true);
+	
+	
+	
 	$.ajax({
 		url : 'ticketAvailable',
 		success : function(data) {
@@ -1878,16 +1883,23 @@ $("#btnNewTicket").click(function() {
 		}
 	});
 
-	if (project.includes("DIALIGHT") || project.includes("CREE")) {
+	if (project.toUpperCase().includes("NON SERIALIZED")) {
+		$("#divPartNumber").show();
 		$('#txtPartNumber').prop("disabled", false);
 		$('#txtPartNumber').val("");
 		$('#txtPartNumber').focus();
 		$("#txtContainer").prop("disabled", true);
+		$("#divSerial").hide();
 		$('#divQty').hide();
+	} else	if (project.includes("CREE")) {
+		$("#txtPartNumber").prop('disabled', false);
+		$("#txtPartNumber").focus();
 	} else {
 		$("#txtContainer").prop("disabled", false);
+		$("#divSerial").show();
 		$("#txtContainer").focus();
 	}
+	
 });
 
 $('#txtQty').keypress(function(e) {

@@ -25,7 +25,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.ModelMap;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -33,7 +32,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.ResponseBody;
-import org.springframework.web.client.RestTemplate;
 import org.springframework.web.servlet.ModelAndView;
 
 import com.itextpdf.text.Document;
@@ -49,9 +47,9 @@ import com.sanmina.tk.orm.dao.TicketDao;
 import com.sanmina.tk.orm.dao.UserDao;
 import com.sanmina.tk.orm.dao.ZPLDao;
 import com.sanmina.tk.orm.dao.rmx.UnitDao;
-import com.sanmina.tk.orm.dao.skid.ContainerSkidDao;
+//import com.sanmina.tk.orm.dao.skid.ContainerSkidDao;
 import com.sanmina.tk.orm.dao.skid.PartNumberSkidDao;
-import com.sanmina.tk.orm.dao.skid.SerialSkidDao;
+//import com.sanmina.tk.orm.dao.skid.SerialSkidDao;
 import com.sanmina.tk.orm.model.Container;
 import com.sanmina.tk.orm.model.ContainerSerial;
 import com.sanmina.tk.orm.model.ContainersOfSkid;
@@ -65,9 +63,9 @@ import com.sanmina.tk.orm.model.TicketPartial;
 import com.sanmina.tk.orm.model.Users;
 import com.sanmina.tk.orm.model.tblContainerJSON;
 import com.sanmina.tk.orm.model.rmx.Unit;
-import com.sanmina.tk.orm.model.skid.ContainerSkid;
+//import com.sanmina.tk.orm.model.skid.ContainerSkid;
 import com.sanmina.tk.orm.model.skid.PartNumberSkid;
-import com.sanmina.tk.orm.model.skid.SerialSkid;
+//import com.sanmina.tk.orm.model.skid.SerialSkid;
 import com.sanmina.tk.pdf.BuildPdf;
 import com.sanmina.tk.pdf.BuildPdfCOLOR;
 import com.sanmina.tk.pdf.BuildPdfCREE;
@@ -86,14 +84,14 @@ public class RequestDispatcher {
 	private TicketDao ticketDao;
 	@Autowired
 	private ContainerDao containerDao;
-	@Autowired
-	private ContainerSkidDao containerSkidDao;
+//	@Autowired
+//	private ContainerSkidDao containerSkidDao;
 	@Autowired
 	private ZPLDao zpldao;
 	@Autowired
 	private PoLineDao poLineDao;
-	@Autowired
-	private SerialSkidDao serialSkidDao;
+//	@Autowired
+//	private SerialSkidDao serialSkidDao;
 	@Autowired
 	private PartNumberSkidDao partNumberSkidDao;
 	@Autowired
@@ -103,22 +101,6 @@ public class RequestDispatcher {
 	@Autowired
 	private UnitDao unitDao;
 
-	public void registerUseMetric(String method, Integer qty) {
-		  try {
-				String campusAPI = "http://gdl1amwebl03.sanmina.com/WebService_APPM";
-		      SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-		      factory.setConnectTimeout(1000);
-		      factory.setReadTimeout(1000);
-		      RestTemplate restTemplateMetric = new RestTemplate(factory);
-		      restTemplateMetric.getForObject(campusAPI + "/App/App/SaveLog/210/9/" + method, String.class);//idPlant2 = 9
-		      // restTemplateMetric.getForObject(campusAPI + "/App/App/SaveLog/PhoneBook/8/" +
-		      // method+"/1",
-		      // String.class);
-		  } catch (Exception e) {
-		      // Nothing
-		  }
-		}
-	
 	@RequestMapping(value = "/")
 	public ModelAndView landing() {
 		return new ModelAndView("login");
@@ -163,7 +145,7 @@ public class RequestDispatcher {
 			LoginInActiveDirectory liad = new LoginInActiveDirectory();
 			Users userLocal = userDao.findUserByUserLogin(userName);
 			if (userLocal != null) {
-				if (liad.login(userName, userPassword)) {
+				if (liad.loginByAPI(userName, userPassword)) {
 					redirec = "index";
 					request.getSession().setAttribute("LOGGEDIN_USER", userName);
 					request.getSession().setAttribute("ID_USER", userLocal.getId());
@@ -340,15 +322,25 @@ public class RequestDispatcher {
 					description = jsonViewString(url);
 				}
 				vMsg = stateZPL.printIUSA(ticket, tempTicket.getProjectId(), partNumber, qty, description);
-			} else if (project.getProjectName().contains("NOKIA FSM4")) {
+			} else if (project.getProjectName().contains("NOKIA")) {
 				List<Container> containersList = containerDao.findContainersByTicket(tempTicket);
 				String url = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialBySerial/"
 						+ containersList.get(0).getContainer().replace(" ", "%20").toUpperCase().trim();
 				JSONObject jSerial = jsonView(url);
+
 				JSONObject jPart = (JSONObject) jSerial.get("partNumber");
-				String revision = jPart.getString("revision");
-				String partNumber = jPart.getString("partNumber");
+				String partNumber = "";
+				String revision = "";
+				if (jPart != null) {
+					partNumber = jPart.getString("partNumber");
+					revision = jPart.getString("revision");
+				}
 				int qty = jSerial.getInt("qty");
+
+				if (project.getProjectName().contains("NOKIA CABINET")) {
+					qty = containerDao.findContainersByTicket(tempTicket).size();
+				}
+
 				if (mappedDao.findMappedByPartSanminaActive(partNumber) != null) {
 					MappedPartNumber mapped = mappedDao.findMappedByPartSanminaActive(partNumber);
 					partNumber = mapped.getPartNumberCustomer();
@@ -412,6 +404,12 @@ public class RequestDispatcher {
 					vMsg = stateZPL.printSIEMENS(ticket, containersList, project.getIdProject(),
 							project.getProjectName(), modelDescription);
 				}
+			} else if (project.getProjectName().contains("AMETEK")) {
+				List<Container> containersList = containerDao.findContainersByTicket(tempTicket);
+				if (vMsg == "") {
+					vMsg = stateZPL.printAMETEK(ticket, project.getIdProject(), (int) containersList.get(0).getQty(),
+							containersList.get(0).getPartNumber());
+				}
 			}
 		} catch (Exception e) {
 			vMsg = "Error: " + e.getMessage();
@@ -462,7 +460,6 @@ public class RequestDispatcher {
 	@RequestMapping(value = "addContainer", method = RequestMethod.POST)
 	public @ResponseBody ModelAndView addContainer(ModelMap model, String container, String ticket) {
 		try {
-			registerUseMetric("Ticket Processed",1);
 			Ticket tempTicket = ticketDao.findTicketByTicket(ticket);
 			List<Container> containerList = containerDao.findContainersByTicket(tempTicket);
 			model.addAttribute("containerList", containerList);
@@ -912,7 +909,7 @@ public class RequestDispatcher {
 					container = container.substring(3, container.length());
 					url = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialBySerial/"
 							+ container.replace(" ", "%20").toUpperCase().trim();
-				} else if (project.contains("NOKIA FSM4")) {
+				} else if (project.contains("NOKIA")) {
 					container = container.substring(2, container.length());
 					url = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialBySerial/"
 							+ container.replace(" ", "%20").toUpperCase().trim();
@@ -926,11 +923,52 @@ public class RequestDispatcher {
 					vMsg = "El serial no fue ecnontrado o las sessiones estan ocupadas en el WebService42Q, vuelva a ingresar el serial de nuevo";
 				} else {
 					jsonSerial = jsonView(url);
-					JSONObject jsonPart = (JSONObject) jsonSerial.get("partNumber");
-					if (jsonPart == null) {
-						vMsg = "EL serial no tiene asignado un numero de parte en el WebService42Q";
+					if (jsonSerial.isNull("partNumber")) {
+						// Aqui modificare para aceptar los contenedores multi part
+						if (project.contains("NOKIA")) {
+							url = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainerGeneral/"
+									+ container.replace(" ", "%20").toUpperCase().trim();
+							List<JSONObject> jsonSerialList = new ArrayList<JSONObject>();
+							jsonSerialList = jsonViewList(url);
+							if (jsonSerialList != null) {
+								Ticket tempTicket = ticketDao.findTicketByTicket(ticket);
+
+								for (int i = 0; i < jsonSerialList.size(); i++) {
+									Container tempContainer = new Container();
+									tempContainer.setContainer(jsonSerialList.get(i).getString("serialNumber"));
+									tempContainer.setPartNumber(jsonSerialList.get(i).getString("partNumber"));
+									tempContainer.setQty(jsonSerialList.get(i).getInt("quantity"));
+									SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+									Date date = formatter.parse(jsonSerial.getString("dte"));
+									tempContainer.setDte(date);
+									tempContainer.setStatus(1);
+									tempContainer.setIdTicket(tempTicket.getIdTicket());
+
+									if (containerDao.findContainerByContainer(tempContainer.getContainer()) == null) {
+										containerDao.saveContainer(tempContainer);
+
+									} else {
+										Ticket tkExist = ticketDao.findTicketByIdTicket(tempContainer.getIdTicket());
+										vMsg = "Estos seriales no pueden ser ingresados ya que existen en el ticket: "
+												+ tkExist.getTicket();
+									}
+								}
+								int qtyC = containerDao.findContainersByTicket(tempTicket).size();
+								tempTicket.setQtyContainers(qtyC);
+								ticketDao.updateTicket(tempTicket);
+
+								if (vMsg.isEmpty())
+									vMsg = "OK";
+							} else {
+								vMsg = "EL serial no tienes seriales en el WebService42Q";
+							}
+						} else {
+							vMsg = "EL serial no tiene asignado un numero de parte en el WebService42Q";
+						}
 					} else {
+
 						if (project.contains("DIALIGHT")) {
+							JSONObject jsonPart = (JSONObject) jsonSerial.get("partNumber");
 							String partJson = jsonPart.getString("partNumber");
 							if (partJson.contains("LFDGT")) {
 								partJson = partJson.substring(6, partJson.length());
@@ -955,6 +993,7 @@ public class RequestDispatcher {
 								vMsg = "El numero de parte no coincide con el resto de los seriales";
 							}
 						} else {
+							JSONObject jsonPart = (JSONObject) jsonSerial.get("partNumber");
 							Ticket tempTicket = ticketDao.findTicketByTicket(ticket);
 							List<Container> listContainer = containerDao.findContainersByTicket(tempTicket);
 							if (listContainer.size() > 0) {
@@ -988,6 +1027,7 @@ public class RequestDispatcher {
 								containerDao.saveContainer(tempContainer);
 							}
 						}
+
 					}
 				}
 			}
@@ -999,40 +1039,62 @@ public class RequestDispatcher {
 	}
 
 	@RequestMapping(value = "validateSerialMCE", method = RequestMethod.POST)
-	public @ResponseBody String validateSerialMCE(Long container, String ticket, String project) {
+	public @ResponseBody String validateSerialMCE(String container, String ticket, String project) {
 		String vMsg = "";
 		try {
 			System.out.println("este es el contenedor de mce " + container);
-			ContainerSkid skidContainer = new ContainerSkid();
+//			ContainerSkid skidContainer = new ContainerSkid();
 			if (containerDao.findContainerByContainer(container.toString()) == null) {
-				if (containerSkidDao.findContainerByContainer(container) != null) {
-					skidContainer = containerSkidDao.findContainerByContainer(container);
-					List<SerialSkid> serials = serialSkidDao.findSerialByContainer(skidContainer.getIdContainer());
-					if (serials.size() > 0) {
+
+				String urlSerials = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainer/"
+						+ container.trim().toUpperCase();
+
+				String url = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialBySerial/"
+						+ container.trim().toUpperCase();
+
+				JSONObject containerObj = jsonView(url);
+
+				String partNumber = "";
+
+				List<JSONObject> lJsonSls = jsonViewList(urlSerials);
+
+				if (containerObj != null) {
+//					skidContainer = containerSkidDao.findContainerByContainer(container);
+//					List<SerialSkid> serials = serialSkidDao.findSerialByContainer(skidContainer.getIdContainer());
+					if (lJsonSls.size() > 0) {
+
+						JSONObject partObj = containerObj.getJSONObject("partNumber");
+
+						if (partObj != null) {
+							partNumber = partObj.getString("partNumber");
+						} else {
+							return "No hay numero de parte en la API de 42Q";
+						}
+
 						Ticket tempTicket = ticketDao.findTicketByTicket(ticket);
 						List<Container> containerList = containerDao.findContainersByTicket(tempTicket);
 						if (containerList.size() <= 0) {
 							Container containerTicket = new Container();
 							containerTicket.setContainer(container.toString());
-							SimpleDateFormat formatter = new SimpleDateFormat("MM-dd-yyyy");
-							Date date = formatter.parse(skidContainer.getDte());
-							containerTicket.setDte(date);
-							PartNumberSkid part = partNumberSkidDao.findPartByIdPart(serials.get(0).getIdPartNumber());
+//							SimpleDateFormat formatter = new SimpleDateFormat("MM-dd-yyyy");
+//							Date date = formatter.parse(new Date().toString());
+							containerTicket.setDte(new Date());
+							PartNumberSkid part = partNumberSkidDao.findPartByPartName(partNumber);
 							containerTicket.setPartNumber(part.getPartNumber());
-							containerTicket.setQty(skidContainer.getQtyContainer());
+							containerTicket.setQty(lJsonSls.size());
 							containerTicket.setIdTicket(tempTicket.getIdTicket());
 							containerDao.saveContainer(containerTicket);
 							vMsg = "Ok";
 						} else {
-							PartNumberSkid part = partNumberSkidDao.findPartByIdPart(serials.get(0).getIdPartNumber());
+							PartNumberSkid part = partNumberSkidDao.findPartByPartName(partNumber);
 							if (containerList.get(0).getPartNumber().equals(part.getPartNumber())) {
 								Container containerTicket = new Container();
 								containerTicket.setContainer(container.toString());
-								SimpleDateFormat formatter = new SimpleDateFormat("MM-dd-yyyy");
-								Date date = formatter.parse(skidContainer.getDte());
-								containerTicket.setDte(date);
+//								SimpleDateFormat formatter = new SimpleDateFormat("MM-dd-yyyy");
+//								Date date = formatter.parse(new Date().toString());
+								containerTicket.setDte(new Date());
 								containerTicket.setPartNumber(part.getPartNumber());
-								containerTicket.setQty(skidContainer.getQtyContainer());
+								containerTicket.setQty(lJsonSls.size());
 								containerTicket.setIdTicket(tempTicket.getIdTicket());
 								containerDao.saveContainer(containerTicket);
 								vMsg = "Ok";
@@ -1066,7 +1128,7 @@ public class RequestDispatcher {
 				int count = 0;
 				List<SerialsOfContainer> serials = new ArrayList();
 
-				String urlSerials = "http://localhost:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainerIUSA/"
+				String urlSerials = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainerIUSA/"
 						+ container.trim().toUpperCase();
 				List<JSONObject> lJsonSls = jsonViewList(urlSerials);
 				if (!lJsonSls.isEmpty()) {
@@ -1081,7 +1143,7 @@ public class RequestDispatcher {
 				}
 				List<ContainerSerial> serialsProcessName = new ArrayList();
 
-				String urlICT = "http://localhost:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainerIUSASC/"
+				String urlICT = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainerIUSASC/"
 						+ container.trim().toUpperCase();
 				List<JSONObject> lJsonIct = jsonViewList(urlICT);
 				if (!lJsonIct.isEmpty()) {
@@ -1096,7 +1158,7 @@ public class RequestDispatcher {
 				}
 				List<ContainerSerial> serialsProcessNames = new ArrayList();
 
-				String urlHMU = "http://localhost:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainerIUSAHMU/"
+				String urlHMU = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainerIUSAHMU/"
 						+ container.trim().toUpperCase();
 				List<JSONObject> lJsonHmu = jsonViewList(urlHMU);
 				if (!lJsonHmu.isEmpty()) {
@@ -1109,7 +1171,7 @@ public class RequestDispatcher {
 						serialsProcessNames.add(temp);
 					}
 				}
-				String urlSerial = "http://localhost:8080/WebServiceCirrus/Serial/Serial/FindSerialBySerial/"
+				String urlSerial = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialBySerial/"
 						+ container.trim().toUpperCase();
 				JSONObject jSerial = jsonView(urlSerial);
 				String partNumber = "";
@@ -1133,6 +1195,10 @@ public class RequestDispatcher {
 												.equals("11"))
 										|| (((ContainerSerial) serialsProcessName.get(y)).getProcess_name().trim()
 												.equals("P1_ICT"))
+												&& (((ContainerSerial) serialsProcessName.get(y)).getAction().trim()
+														.equals("11"))
+										|| (((ContainerSerial) serialsProcessName.get(y)).getProcess_name().trim()
+												.equals("F1_ICT"))
 												&& (((ContainerSerial) serialsProcessName.get(y)).getAction().trim()
 														.equals("11"))) {
 									count++;
@@ -1162,24 +1228,29 @@ public class RequestDispatcher {
 						if (count >= serials.size()) {
 							vMsg = "Ok";
 						} else {
-							vMsg = "insuficiente";
+							vMsg = "Insuficiente";
 						}
-					}
-
-					else if ((partNumber.equals("IU105602-AE04X01"))) {
+					} else if ((partNumber.equals("IUP67T1V3-POLI_MB1-PL")) || (partNumber.equals("IUP4T4V19_PU_BT-PL"))
+							|| (partNumber.equals("IUP4T4V19_MB_BT-PL")) || (partNumber.equals("IUP67T1V5-MONO_MB-PL"))
+							|| (partNumber.equals("IUP67T1V5-POLI_MB-PL")) || (partNumber.equals("IUP67T1V4_P1-PL"))
+							|| (partNumber.equals("IUP67T1V4_ALT-PL"))) {
 						boolean vHMU = false;
 						List<String> serialNotProccess = new ArrayList();
 						for (int x = 0; x < serials.size(); x++) {
 							for (int y = 0; y < serialsProcessNames.size(); y++) {
 								if (((SerialsOfContainer) serials.get(x)).getSerial_number()
 										.equals(((ContainerSerial) serialsProcessNames.get(y)).getSerial_Number())) {
-									if (( (((ContainerSerial) serialsProcessNames.get(y)).getProcess_name().trim()
-													.equals("HMU"))
-													&& (((ContainerSerial) serialsProcessNames.get(y)).getAction()
-															.trim().equals("11")))
+									if (((((ContainerSerial) serialsProcessNames.get(y)).getProcess_name().trim()
+											.equals("HMU"))
+											&& (((ContainerSerial) serialsProcessNames.get(y)).getAction().trim()
+													.equals("11")))
 
 											|| ((((ContainerSerial) serialsProcessNames.get(y)).getProcess_name().trim()
 													.equals("P1_HMU"))
+													&& (((ContainerSerial) serialsProcessNames.get(y)).getAction()
+															.trim().equals("11")))
+											|| ((((ContainerSerial) serialsProcessNames.get(y)).getProcess_name().trim()
+													.equals("F1_HMU"))
 													&& (((ContainerSerial) serialsProcessNames.get(y)).getAction()
 															.trim().equals("11")))) {
 										vHMU = true;
@@ -1199,6 +1270,24 @@ public class RequestDispatcher {
 
 						}
 
+						if (serialNotProccess.size() > 0) {
+							for (int z = 0; z < serialNotProccess.size(); z++) {
+								if (vMsg == "") {
+									vMsg = "Serial error: " + (String) serialNotProccess.get(z);
+								} else {
+									vMsg = vMsg + ", " + (String) serialNotProccess.get(z);
+								}
+							}
+							vMsg = vMsg + ", favor de validar.";
+						} else {
+							vMsg = "Ok";
+						}
+//						if (count >= serials.size()) {
+//							vMsg = "Ok";
+//						} else {
+//							vMsg = "Insuficiente";
+//						}
+
 					} else {
 						boolean vICT = false;
 						boolean vHMUorFVS = false;
@@ -1216,6 +1305,10 @@ public class RequestDispatcher {
 													.equals("P1_FVS"))
 													&& (((ContainerSerial) serialsProcessNames.get(y)).getAction()
 															.trim().equals("11")))
+											|| ((((ContainerSerial) serialsProcessNames.get(y)).getProcess_name().trim()
+													.equals("F1_FVS"))
+													&& (((ContainerSerial) serialsProcessNames.get(y)).getAction()
+															.trim().equals("11")))
 
 											|| ((((ContainerSerial) serialsProcessNames.get(y)).getProcess_name().trim()
 													.equals("HMU"))
@@ -1224,6 +1317,11 @@ public class RequestDispatcher {
 
 											|| ((((ContainerSerial) serialsProcessNames.get(y)).getProcess_name().trim()
 													.equals("P1_HMU"))
+													&& (((ContainerSerial) serialsProcessNames.get(y)).getAction()
+															.trim().equals("11")))
+
+											|| ((((ContainerSerial) serialsProcessNames.get(y)).getProcess_name().trim()
+													.equals("F1_HMU"))
 													&& (((ContainerSerial) serialsProcessNames.get(y)).getAction()
 															.trim().equals("11")))) {
 										vHMUorFVS = true;
@@ -1284,7 +1382,7 @@ public class RequestDispatcher {
 			}
 			if (vMsg.equals("Ok")) {
 				vMsg = "";
-				String urlToJob = "http://localhost:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainer/"
+				String urlToJob = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainer/"
 						+ container.replace(" ", "%20").toUpperCase().trim();
 				List<JSONObject> jsonSerials = new ArrayList();
 				List<String> serialsShop = new ArrayList();
@@ -1409,7 +1507,7 @@ public class RequestDispatcher {
 		try {
 			if (project.equals("NOKIA RRH")) {
 				container = container.substring(3, container.length());
-			} else if (project.contains("NOKIA FSM4")) {
+			} else if (project.contains("NOKIA")) {
 				container = container.substring(2, container.length());
 			}
 			if (containerDao.findContainerByContainer(container) == null) {
@@ -1432,7 +1530,7 @@ public class RequestDispatcher {
 						url = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialBySerial/"
 								+ partNumber + container.replace(" ", "%20").toUpperCase().trim();
 					}
-				} else if (project.equals("NOKIA FSM4")) {
+				} else if (project.contains("NOKIA")) {
 					Ticket tempTicket = ticketDao.findTicketByTicket(ticket);
 					List<Container> listContainer = containerDao.findContainersByTicket(tempTicket);
 					if (listContainer.size() > 0) {
@@ -1458,9 +1556,60 @@ public class RequestDispatcher {
 					vMsg = "Serial not found";
 				} else {
 					jsonSerial = jsonView(url);
-					JSONObject jsonPart = (JSONObject) jsonSerial.get("partNumber");
-					if (jsonPart == null) {
-						vMsg = "Este serial no tiene asignado un numero de parte";
+					if (jsonSerial.get("partNumber") == null) {
+						if (project.contains("NOKIA")) {
+							// Validacion de ShopOrder en contenedores multipart
+							if (project.contains("NOKIA"))
+								container = container.substring(2, container.length());
+
+							String urlToJob = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainer/"
+									+ container.replace(" ", "%20").toUpperCase().trim();
+							List<JSONObject> jsonSerials = new ArrayList<JSONObject>();
+							List<String> serialsShop = new ArrayList<String>();
+							jsonSerials = jsonViewList(urlToJob);
+							for (int i = 0; i < jsonSerials.size(); i++) {
+								System.out.println(jsonSerials.get(i).get("serial_number") + " "
+										+ jsonSerials.get(i).get("shop_order_key").toString());
+								if (jsonSerials.get(i).get("shop_order_key").toString().contains("null")) {
+									serialsShop.add(jsonSerials.get(i).get("serial_number").toString());
+								}
+							}
+							if (!serialsShop.isEmpty()) {
+								for (int y = 0; y < serialsShop.size(); y++) {
+									if (vMsg.equals("")) {
+										vMsg = "Seriales sin shop order " + serialsShop.get(y);
+									} else {
+										vMsg = vMsg + ", " + serialsShop.get(y);
+									}
+								}
+							}
+
+							if (vMsg.equals("")) {
+								if (!project.contains("NOKIA") && !project.equals("COLOR KINETICS TELETROL")
+										&& !project.equals("COLOR KINETICS CAPTIVATION") && !project.contains("SIEMENS")
+										&& !project.contains("DIGITAL LUMENS CONTAINER") && !project.contains("HAAS")
+										&& !project.contains("DIALIGHT PO ACCESORIOS")
+										&& !project.contains("COLOR KINETICS PCA") && !project.contains("VIKING")
+										&& !project.contains("AMETEK")
+										&& !project.contains("TESLA")) {
+									JSONObject jsonLocation = (JSONObject) jsonSerial.get("location");
+									if (jsonLocation == null) {
+										vMsg = "Este serial no tiene asignada una ubicacion";
+									} else {
+										if (jsonLocation.getString("shortWorkStation").equals("COMP")) {
+											vMsg = "Ok";
+										} else {
+											vMsg = "El serial no se encuentra en complete";
+										}
+									}
+								} else {
+									vMsg = "Ok";
+								}
+							}
+
+						} else {
+							vMsg = "Este serial no tiene asignado un numero de parte";
+						}
 					} else {
 						System.out.println("Validacion por el proyecto de las shop order: " + project);
 						// Validacion de shop order por serial
@@ -1474,11 +1623,13 @@ public class RequestDispatcher {
 						}
 
 						if (project.contains("IUSA") || project.contains("SIEMENS") || project.contains("HAAS")
-								|| project.contains("ECHOSTAR") || project.contains("NOKIA FSM4")
-								|| project.contains("VERIZON")) {
+								|| project.contains("ECHOSTAR") || project.contains("NOKIA")
+								|| project.contains("VERIZON") || project.contains("MCE") || project.contains("VIKING")
+								|| project.contains("AMETEK") || project.contains("TESLA")) {
 							// Validacion de shop order a nivel contenedor a ecepcion de CREE Check point
 							System.out.println("Validacion de Shop Order " + project);
-							if (project.contains("NOKIA FSM4"))
+//							Removemos 2 caracteres
+							if (project.contains("NOKIA") && container.contains("3S"))
 								container = container.substring(2, container.length());
 
 							String urlToJob = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialsByContainer/"
@@ -1505,11 +1656,13 @@ public class RequestDispatcher {
 
 						}
 						if (vMsg.equals("")) {
-							if (!project.contains("NOKIA FSM4") && !project.equals("COLOR KINETICS TELETROL")
+							if (!project.contains("NOKIA") && !project.equals("COLOR KINETICS TELETROL")
 									&& !project.equals("COLOR KINETICS CAPTIVATION") && !project.contains("SIEMENS")
 									&& !project.contains("DIGITAL LUMENS CONTAINER") && !project.contains("HAAS")
 									&& !project.contains("DIALIGHT PO ACCESORIOS")
-									&& !project.contains("COLOR KINETICS PCA")) {
+									&& !project.contains("COLOR KINETICS PCA") && !project.contains("MCE")
+									&& !project.contains("VIKING") && !project.contains("AMETEK")
+									&& !project.contains("TESLA")) {
 								JSONObject jsonLocation = (JSONObject) jsonSerial.get("location");
 								if (jsonLocation == null) {
 									vMsg = "Este serial no tiene asignada una ubicacion";
@@ -1535,6 +1688,7 @@ public class RequestDispatcher {
 			vMsg = "Error: " + e.getMessage();
 			e.printStackTrace();
 		}
+		System.out.println(vMsg);
 		return vMsg;
 	}
 
@@ -1655,14 +1809,25 @@ public class RequestDispatcher {
 				}
 				vMsg = stateZPL.printDIALIGHT(ticket, containers, tempProject.getIdProject(), partNumber);
 				System.out.println("Valor del mensaje de impresion " + vMsg);
-			} else if (project.contains("NOKIA FSM4")) {
+			} else if (project.contains("NOKIA")) {
 				String url = "http://gdl1amwebw03.am.sanm.corp:8080/WebServiceCirrus/Serial/Serial/FindSerialBySerial/"
 						+ containers.get(0).getContainer().replace(" ", "%20").toUpperCase().trim();
 				JSONObject jSerial = jsonView(url);
 				JSONObject jPart = (JSONObject) jSerial.get("partNumber");
-				String revision = jPart.getString("revision");
-				String partNumber = jPart.getString("partNumber");
+				String partNumber = "";
+				String revision = "";
+				if (jPart != null) {
+					partNumber = jPart.getString("partNumber");
+					revision = jPart.getString("revision");
+				}
+
 				int qty = jSerial.getInt("qty");
+
+				if (project.contains("NOKIA CABINET")) {
+					qty = containerDao.findContainersByTicket(tk).size();
+				}
+
+				System.out.println("maldita qty " + qty);
 				if (mappedDao.findMappedByPartSanminaActive(partNumber) != null) {
 					MappedPartNumber mapped = mappedDao.findMappedByPartSanminaActive(partNumber);
 					partNumber = mapped.getPartNumberCustomer();
@@ -1726,6 +1891,12 @@ public class RequestDispatcher {
 				String modelDescription = jPart.getString("description");
 				vMsg = stateZPL.printSIEMENS(ticket, containers, tempProject.getIdProject(),
 						tempProject.getProjectName(), modelDescription);
+			} else if (project.contains("AMETEK")) {
+				List<Container> containersList = containerDao.findContainersByTicket(tk);
+				if (vMsg == "") {
+					vMsg = stateZPL.printAMETEK(ticket, tempProject.getIdProject(),
+							(int) containersList.get(0).getQty(), containersList.get(0).getPartNumber());
+				}
 			}
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -1969,18 +2140,28 @@ public class RequestDispatcher {
 	public ResponseEntity<byte[]> buildPDF(String project, String ticket) {
 		byte[] contents;
 		ResponseEntity<byte[]> response = null;
+
 		Ticket tempTicket = ticketDao.findTicketByTicket(ticket);
 		List<Container> tempContainer = containerDao.findContainersByTicket(tempTicket);
-		Long containerskid = Long.parseLong(tempContainer.get(0).getContainer());
-		List<SerialSkid> serialSkid = serialSkidDao.findSerialByContainer(containerskid);
-		Long idPart = serialSkid.get(0).getIdPartNumber();
-		PartNumberSkid partPrint = partNumberSkidDao.findPartByIdPart(idPart);
+
+//		Long containerskid = Long.parseLong(tempContainer.get(0).getContainer());
+//		List<SerialSkid> serialSkid = serialSkidDao.findSerialByContainer(containerskid);
+
+//		Long idPart = serialSkid.get(0).getIdPartNumber();
+
+		String partName = tempContainer.get(0).getPartNumber();
+
+		PartNumberSkid partPrint = partNumberSkidDao.findPartByPartName(partName);
+
 		long qtyPrint = 0;
+
 		for (int i = 0; i < tempContainer.size(); i++) {
 			qtyPrint = qtyPrint + tempContainer.get(i).getQty();
+
 		}
 		MappedPartNumber partNumber = new MappedPartNumber();
 		String part = "";
+
 		if (mappedDao.findMappedByPartSanminaActive(partPrint.getPartNumber()) != null) {
 			partNumber = mappedDao.findMappedByPartSanminaActive(partPrint.getPartNumber());
 			part = partNumber.getPartNumberCustomer();
