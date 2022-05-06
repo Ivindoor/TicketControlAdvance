@@ -1,0 +1,22 @@
+package com.sanmina.tk.orm.model;
+
+import javax.persistence.Entity;
+import javax.persistence.Id;
+
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
+
+@Entity
+@NoArgsConstructor
+public class ContainerSerial {
+
+	@Id
+	@Getter @Setter private Integer ID;
+	
+	@Getter @Setter private String Serial_Number;
+	
+	@Getter @Setter private String process_name;
+	
+	@Getter @Setter private String Action;
+}

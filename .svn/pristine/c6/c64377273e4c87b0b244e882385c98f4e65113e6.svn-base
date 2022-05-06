@@ -1,0 +1,322 @@
+package com.sanmina.tk.web;
+
+import java.security.Principal;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.ModelMap;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.servlet.ModelAndView;
+
+import com.sanmina.tk.orm.dao.ContainerDao;
+import com.sanmina.tk.orm.dao.PoLineDao;
+import com.sanmina.tk.orm.dao.ProjectDao;
+import com.sanmina.tk.orm.dao.TicketDao;
+import com.sanmina.tk.orm.dao.UserDao;
+import com.sanmina.tk.orm.dao.tbl_TicketDeletedDao;
+import com.sanmina.tk.orm.model.Ticket;
+import com.sanmina.tk.orm.model.Users;
+import com.sanmina.tk.orm.model.tbl_TicketDeleted;
+import com.sanmina.tk.orm.model.Container;
+import com.sanmina.tk.orm.model.PoLine;
+import com.sanmina.tk.orm.model.Project;
+
+@Controller
+public class RequestSearch {
+
+	@Autowired
+	private PoLineDao poLineDao;
+	@Autowired
+	private UserDao userDao;
+	@Autowired
+	private ProjectDao projectDao;
+	@Autowired
+	private TicketDao ticketDao;
+	@Autowired
+	private ContainerDao containerDao;
+	@Autowired
+	private tbl_TicketDeletedDao ticketDeletedDao;
+
+	@RequestMapping(value = "BuscarTicket")
+	public ModelAndView landingResolv(ModelMap model) {
+		return new ModelAndView("BuscarTicket/BuscarTicket", model);
+	}
+
+	@RequestMapping(value = "cleanTicket")
+	public ModelAndView CleanTicket(ModelMap model) {
+		return new ModelAndView("BuscarTicket/TableDiv", model);
+	}
+
+	@RequestMapping(value = "enabledDelete")
+	public @ResponseBody Integer EabledDelete(Principal principal) {
+		int vMsg = 0;
+		try {
+			Users user = userDao.findUserByUserLogin(principal.getName());
+			vMsg = user.getLevelTicket();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+		return vMsg;
+	}
+
+	@RequestMapping(value = "deleteByTicket", method = RequestMethod.POST)
+	public @ResponseBody String DeleteByTicket(String value, String comment, Principal principal) {
+		String vMsg = "";
+		try {
+			Users user = userDao.findUserByUserLogin(principal.getName());
+			
+			Ticket ticket = new Ticket();
+			if (ticketDao.findTicketByTicket(value) == null) {
+				System.out.println("Ticket don't exist");
+				vMsg = "Ticket don't exist";
+			} else {
+				ticket = ticketDao.findTicketByTicket(value);
+				
+				
+				if(user.getDepartamento() != "IT" && Integer.parseInt(ticket.getEnabled()) > 1) {
+					
+				}
+				
+				
+				ticket = ticketDao.findTicketByTicket(value);
+				Project project = projectDao.findProjectByIdProject(ticket.getProjectId());
+				System.out.println(project.getProjectName());
+				if (project.getProjectName().contains("DIALIGHT") || project.getProjectName().contains("SIEMENS")) {
+					int qtyRemoved = 0;
+					List<Container> containerList = containerDao.findContainersByTicket(ticket);
+					if (containerList.size() <= 0) {
+						vMsg = "";
+					}
+					// Obtenemos la cantidad de las unidades a remover del
+					// ticket para regresarlas a la PO
+					for (int i = 0; i < containerList.size(); i++) {
+						qtyRemoved = qtyRemoved + (int) containerList.get(i).getQty();
+					}
+					PoLine poLine = poLineDao.findPoLineByIdPoLine(ticket.getIdPoLine());
+					poLine.setPartQtyRequired(poLine.getPartQtyRequired() + qtyRemoved);
+					poLine.setPartQtyStored(poLine.getPartQtyStored() - qtyRemoved);
+					System.out.println("Qty Requerida " + poLine.getPartQtyRequired() + " Qty Almacenada "
+							+ poLine.getPartQtyStored() + " Activo de la PoLine " + poLine.getActive());
+					if (poLine.getActive() == false)
+						poLine.setActive(true);
+					poLineDao.updatePoLine(poLine);
+					tbl_TicketDeleted ticketDeleted = new tbl_TicketDeleted();
+					ticketDeleted.setTicket(ticket.getTicket());
+					ticketDeleted.setId_ticket(ticket.getIdTicket());
+					ticketDeleted.setIdProject(ticket.getProjectId());
+					ticketDeleted.setDescription(comment);
+					ticketDeleted.setUserName(principal.getName());
+					ticketDeleted.setDteDeleted(new Date());
+					ticketDeletedDao.saveTbl_TicketDeleted(ticketDeleted);
+					// Eliminar el ticket y los seriales
+					ticketDao.deleteTicketByTicket(ticket);
+					if (ticketDao.findTicketByTicket(value) == null) {
+						vMsg = "Ticket has deleted";
+						System.out.println("Ticket has deleted");
+					}
+				} else {
+					tbl_TicketDeleted ticketDeleted = new tbl_TicketDeleted();
+					ticketDeleted.setTicket(ticket.getTicket());
+					ticketDeleted.setId_ticket(ticket.getIdTicket());
+					ticketDeleted.setIdProject(ticket.getProjectId());
+					ticketDeleted.setDescription(comment);
+					ticketDeleted.setUserName(principal.getName());
+					ticketDeleted.setDteDeleted(new Date());
+					ticketDeletedDao.saveTbl_TicketDeleted(ticketDeleted);
+					// Eliminar el ticket y los seriales
+					ticketDao.deleteTicketByTicket(ticket);
+					if (ticketDao.findTicketByTicket(value) == null) {
+						vMsg = "Ticket has deleted";
+						System.out.println("Ticket has deleted");
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			vMsg = "Error: " + e.getMessage();
+		}
+		return vMsg;
+	}
+
+	@RequestMapping(value = "deleteBySerial", method = RequestMethod.POST)
+	public @ResponseBody String DeleteBySerial(String value, String comment, Principal principal) {
+		String vMsg = "";
+		try {
+			Container container = new Container();
+			if (containerDao.findContainerByContainer(value) == null) {
+				vMsg = "Serial don't exist";
+			} else {
+				container = containerDao.findContainerByContainer(value);
+				Ticket ticket = new Ticket();
+				if (ticketDao.findTicketByIdTicket(container.getIdTicket()) == null) {
+					vMsg = "Ticket don't exist";
+				} else {
+					ticket = ticketDao.findTicketByIdTicket(container.getIdTicket());
+					Project project = new Project();
+					if (projectDao.findProjectByIdProject(ticket.getProjectId()) == null) {
+						vMsg = "The ticket has not been assigned to a project";
+					} else {
+						project = projectDao.findProjectByIdProject(ticket.getProjectId());
+						if (project.getProjectName().contains("DIALIGHT")
+								|| project.getProjectName().contains("SIEMENS")) {
+							int qtyRemoved = 0;
+							List<Container> containerList = containerDao.findContainersByTicket(ticket);
+							// Obtenemos la cantidad de las unidades a remover
+							// del
+							// ticket para regresarlas a la PO
+							for (int i = 0; i < containerList.size(); i++) {
+								qtyRemoved = qtyRemoved + (int) containerList.get(i).getQty();
+							}
+							PoLine poLine = poLineDao.findPoLineByIdPoLine(ticket.getIdPoLine());
+							poLine.setPartQtyRequired(poLine.getPartQtyRequired() + qtyRemoved);
+							poLine.setPartQtyStored(poLine.getPartQtyStored() - qtyRemoved);
+							System.out.println("Qty Requerida " + poLine.getPartQtyRequired() + " Qty Almacenada "
+									+ poLine.getPartQtyStored() + " Activo de la PoLine " + poLine.getActive());
+							if (poLine.getActive() == false)
+								poLine.setActive(true);
+							poLineDao.updatePoLine(poLine);
+							tbl_TicketDeleted ticketDeleted = new tbl_TicketDeleted();
+							ticketDeleted.setTicket(ticket.getTicket());
+							ticketDeleted.setId_ticket(ticket.getIdTicket());
+							ticketDeleted.setIdProject(ticket.getProjectId());
+							ticketDeleted.setDescription(comment);
+							ticketDeleted.setUserName(principal.getName());
+							ticketDeleted.setDteDeleted(new Date());
+							ticketDeletedDao.saveTbl_TicketDeleted(ticketDeleted);
+							// Eliminar el ticket y los seriales
+							ticketDao.deleteTicketByTicket(ticket);
+							if (ticketDao.findTicketByTicket(value) == null) {
+								vMsg = "Ticket has deleted";
+								System.out.println("Ticket has deleted");
+							}
+						} else {
+							tbl_TicketDeleted ticketDeleted = new tbl_TicketDeleted();
+							ticketDeleted.setTicket(ticket.getTicket());
+							ticketDeleted.setId_ticket(ticket.getIdTicket());
+							ticketDeleted.setIdProject(ticket.getProjectId());
+							ticketDeleted.setDescription(comment);
+							ticketDeleted.setUserName(principal.getName());
+							ticketDeleted.setDteDeleted(new Date());
+							ticketDeletedDao.saveTbl_TicketDeleted(ticketDeleted);
+							// Eliminar el ticket y los seriales
+							ticketDao.deleteTicketByTicket(ticket);
+							if (ticketDao.findTicketByTicket(value) == null) {
+								vMsg = "Ticket has deleted";
+								System.out.println("Ticket has deleted");
+							}
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			vMsg = "Error: " + e.getMessage();
+		}
+		return vMsg;
+	}
+
+	@RequestMapping(value = "searchByTicket")
+	public @ResponseBody String searchByTicket(String value) {
+		String vMsg = "";
+		try {
+			Ticket tempTicket = new Ticket();
+			if (ticketDao.findTicketByTicket(value) == null) {
+				vMsg = "Ticket don't exist";
+			} else {
+				tempTicket = ticketDao.findTicketByTicket(value);
+				if (containerDao.findContainersByTicket(tempTicket) == null) {
+					vMsg = "Serials don't exist";
+				} else {
+					vMsg = "Ok";
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			vMsg = "Error: " + e.getMessage();
+		}
+		return vMsg;
+	}
+
+	@RequestMapping(value = "searchBySerial")
+	public @ResponseBody String SearchBySerial(String value) {
+		String vMsg = "";
+		try {
+			if (containerDao.findContainerByContainer(value) == null) {
+				vMsg = "Serial don't exist";
+			} else {
+				Ticket tempTicket = new Ticket();
+				Container container = containerDao.findContainerByContainer(value);
+				if (ticketDao.findTicketByIdTicket(container.getIdTicket()) == null) {
+					vMsg = "Ticket don't exist";
+				} else {
+					tempTicket = ticketDao.findTicketByIdTicket(container.getIdTicket());
+					List<Container> containerList = containerDao.findContainersByTicket(tempTicket);
+					if (containerList == null) {
+						vMsg = "Serials don't exist";
+					} else {
+						vMsg = "Ok";
+					}
+				}
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			vMsg = "Error: " + e.getMessage();
+		}
+		return vMsg;
+	}
+
+	@RequestMapping(value = "loadInfoBySerial", method = RequestMethod.POST)
+	public @ResponseBody ModelAndView LoadInfoBySerial(ModelMap model, String value) {
+		try {
+			Container findContainer = containerDao.findContainerByContainer(value);
+			Ticket ticket = ticketDao.findTicketByIdTicket(findContainer.getIdTicket());
+			List<Container> containerList = containerDao.findContainersByTicket(ticket);
+			if (ticket.getEnabled().equals("0"))
+				model.addAttribute("ticketEnabled", "Sin asignar");
+			if (ticket.getEnabled().equals("1"))
+				model.addAttribute("ticketEnabled", "Piso de producción");
+			if (ticket.getEnabled().equals("2"))
+				model.addAttribute("ticketEnabled", "Embarques");
+			if (ticket.getEnabled().equals("3"))
+				model.addAttribute("ticketEnabled", "Cargando a troca");
+			if (ticket.getEnabled().equals("4"))
+				model.addAttribute("ticketEnabled", "Enviado a troca");
+			model.addAttribute("ticket", ticket);
+			model.addAttribute("containerList", containerList);
+			return new ModelAndView("BuscarTicket/TableDiv", model);
+		} catch (NullPointerException ex) {
+			return new ModelAndView("home/notFound", model);
+		}
+	}
+
+	@RequestMapping(value = "loadInfoByTicket", method = RequestMethod.POST)
+	public @ResponseBody ModelAndView LoadInfoByTicket(ModelMap model, String value) {
+		List<Container> containerList = new ArrayList<Container>();
+		Ticket ticket = ticketDao.findTicketByTicket(value);
+		try {
+			if (ticket.getEnabled().equals("0"))
+				model.addAttribute("ticketEnabled", "Sin asignar");
+			if (ticket.getEnabled().equals("1"))
+				model.addAttribute("ticketEnabled", "Piso de producción");
+			if (ticket.getEnabled().equals("2"))
+				model.addAttribute("ticketEnabled", "Embarques");
+			if (ticket.getEnabled().equals("3"))
+				model.addAttribute("ticketEnabled", "Cargando a troca");
+			if (ticket.getEnabled().equals("4"))
+				model.addAttribute("ticketEnabled", "Enviado a troca");
+			model.addAttribute("ticket", ticket);
+			containerList = containerDao.findContainersByTicket(ticket);
+			model.addAttribute("containerList", containerList);
+			model.addAttribute("totalContainers", containerList.size());
+			System.out.println(ticket.getTicket() + " " + containerList.get(0).getContainer());
+			return new ModelAndView("BuscarTicket/TableDiv", model);
+		} catch (NullPointerException e) {
+			return new ModelAndView("home/notFound", model);
+		}
+	}
+}
